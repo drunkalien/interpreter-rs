@@ -35,7 +35,14 @@ impl Lexer {
     pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         let token = match self.ch {
-            b'=' => Token::Assign,
+            b'=' => {
+                if self.peek_char() == b'=' {
+                    self.read_char();
+                    Token::Equal
+                } else {
+                    Token::Assign
+                }
+            }
             b';' => Token::Semicolon,
             b'(' => Token::LParen,
             b')' => Token::RParen,
@@ -48,6 +55,11 @@ impl Lexer {
                 return match ident.as_str() {
                     "fn" => Token::Function,
                     "let" => Token::Let,
+                    "return" => Token::Return,
+                    "true" => Token::True,
+                    "false" => Token::False,
+                    "if" => Token::If,
+                    "else" => Token::Else,
                     _ => Token::Ident(ident),
                 };
             }
@@ -56,6 +68,19 @@ impl Lexer {
 
                 return Token::Int(number);
             }
+            b'-' => Token::Minus,
+            b'!' => {
+                if self.peek_char() == b'=' {
+                    self.read_char();
+                    Token::BangEqual
+                } else {
+                    Token::Bang
+                }
+            }
+            b'*' => Token::Asterisk,
+            b'/' => Token::Slash,
+            b'<' => Token::LessThan,
+            b'>' => Token::GreaterThan,
             0 => Token::Eof,
             _ => Token::Illegal,
         };
@@ -89,6 +114,14 @@ impl Lexer {
             self.read_char();
         }
     }
+
+    fn peek_char(&self) -> u8 {
+        if self.read_position >= self.input.len() {
+            0
+        } else {
+            self.input[self.read_position]
+        }
+    }
 }
 
 #[cfg(test)]
@@ -96,11 +129,24 @@ mod test {
     #[test]
     fn get_next_token() -> Result<(), ()> {
         let input = String::from(
-            "let five = 5;\n
-        let ten = 10;\n
+            "let five = 5;
+        let ten = 10;
         let add = fn(x, y) {
             x + y;
-        };",
+        };
+        let result = add(five, ten);
+        !-/*5;
+        5 < 10 > 5;
+
+        if (5 < 10) {
+            return true;
+        } else {
+            return false;
+        }
+
+        10 == 10;
+        10 != 9;
+        ",
         );
 
         let mut lexer = super::Lexer::new(input);
@@ -132,11 +178,59 @@ mod test {
             super::Token::Semicolon,
             super::Token::RBrace,
             super::Token::Semicolon,
+            super::Token::Let,
+            super::Token::Ident(String::from("result")),
+            super::Token::Assign,
+            super::Token::Ident(String::from("add")),
+            super::Token::LParen,
+            super::Token::Ident(String::from("five")),
+            super::Token::Comma,
+            super::Token::Ident(String::from("ten")),
+            super::Token::RParen,
+            super::Token::Semicolon,
+            super::Token::Bang,
+            super::Token::Minus,
+            super::Token::Slash,
+            super::Token::Asterisk,
+            super::Token::Int(String::from("5")),
+            super::Token::Semicolon,
+            super::Token::Int(String::from("5")),
+            super::Token::LessThan,
+            super::Token::Int(String::from("10")),
+            super::Token::GreaterThan,
+            super::Token::Int(String::from("5")),
+            super::Token::Semicolon,
+            super::Token::If,
+            super::Token::LParen,
+            super::Token::Int(String::from("5")),
+            super::Token::LessThan,
+            super::Token::Int(String::from("10")),
+            super::Token::RParen,
+            super::Token::LBrace,
+            super::Token::Return,
+            super::Token::True,
+            super::Token::Semicolon,
+            super::Token::RBrace,
+            super::Token::Else,
+            super::Token::LBrace,
+            super::Token::Return,
+            super::Token::False,
+            super::Token::Semicolon,
+            super::Token::RBrace,
+            super::Token::Int("10".into()),
+            super::Token::Equal,
+            super::Token::Int("10".into()),
+            super::Token::Semicolon,
+            super::Token::Int("10".into()),
+            super::Token::BangEqual,
+            super::Token::Int("9".into()),
+            super::Token::Semicolon,
             super::Token::Eof,
         ];
 
         for (_, expected) in tests.iter().enumerate() {
             let tok = lexer.next_token();
+            println!("expected: {:?}, got: {:?}", expected, tok);
             if tok != *expected {
                 return Err(());
             }
