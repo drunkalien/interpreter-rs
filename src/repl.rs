@@ -1,5 +1,5 @@
 use crate::lexer::Lexer;
-use crate::tokens::Token;
+use crate::tokens::{Token, TokenType};
 use std::io::Write;
 use std::io::{stdin, stdout};
 
@@ -23,7 +23,7 @@ impl Repl {
             loop {
                 let token = lexer.next_token();
 
-                if token == Token::Eof {
+                if token == Token::new(TokenType::Eof, "".into()) {
                     break;
                 }
 

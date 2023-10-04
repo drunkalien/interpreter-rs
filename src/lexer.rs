@@ -1,10 +1,10 @@
-use crate::tokens::Token;
+use crate::tokens::{Token, TokenType};
 
 pub struct Lexer {
-    position: usize,
-    read_position: usize,
-    ch: u8,
-    input: Vec<u8>,
+    pub position: usize,
+    pub read_position: usize,
+    pub ch: u8,
+    pub input: Vec<u8>,
 }
 
 impl Lexer {
@@ -38,51 +38,51 @@ impl Lexer {
             b'=' => {
                 if self.peek_char() == b'=' {
                     self.read_char();
-                    Token::Equal
+                    Token::new(TokenType::Equal, "==".into())
                 } else {
-                    Token::Assign
+                    Token::new(TokenType::Assign, "=".into())
                 }
             }
-            b';' => Token::Semicolon,
-            b'(' => Token::LParen,
-            b')' => Token::RParen,
-            b',' => Token::Comma,
-            b'+' => Token::Plus,
-            b'{' => Token::LBrace,
-            b'}' => Token::RBrace,
+            b';' => Token::new(TokenType::Semicolon, ";".into()),
+            b'(' => Token::new(TokenType::LParen, "(".into()),
+            b')' => Token::new(TokenType::RParen, ")".into()),
+            b',' => Token::new(TokenType::Comma, ",".into()),
+            b'+' => Token::new(TokenType::Plus, "+".into()),
+            b'{' => Token::new(TokenType::LBrace, "{".into()),
+            b'}' => Token::new(TokenType::RBrace, "}".into()),
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                 let ident = self.read_identifier();
                 return match ident.as_str() {
-                    "fn" => Token::Function,
-                    "let" => Token::Let,
-                    "return" => Token::Return,
-                    "true" => Token::True,
-                    "false" => Token::False,
-                    "if" => Token::If,
-                    "else" => Token::Else,
-                    _ => Token::Ident(ident),
+                    "fn" => Token::new(TokenType::Function, "fn".into()),
+                    "let" => Token::new(TokenType::Let, "let".into()),
+                    "return" => Token::new(TokenType::Return, "return".into()),
+                    "true" => Token::new(TokenType::True, "true".into()),
+                    "false" => Token::new(TokenType::False, "false".into()),
+                    "if" => Token::new(TokenType::If, "if".into()),
+                    "else" => Token::new(TokenType::Else, "else".into()),
+                    _ => Token::new(TokenType::Ident, ident),
                 };
             }
             b'0'..=b'9' => {
                 let number = self.read_int();
 
-                return Token::Int(number);
+                return Token::new(TokenType::Int, number);
             }
-            b'-' => Token::Minus,
+            b'-' => Token::new(TokenType::Minus, "-".into()),
             b'!' => {
                 if self.peek_char() == b'=' {
                     self.read_char();
-                    Token::BangEqual
+                    Token::new(TokenType::BangEqual, "!=".into())
                 } else {
-                    Token::Bang
+                    Token::new(TokenType::Bang, "!".into())
                 }
             }
-            b'*' => Token::Asterisk,
-            b'/' => Token::Slash,
-            b'<' => Token::LessThan,
-            b'>' => Token::GreaterThan,
-            0 => Token::Eof,
-            _ => Token::Illegal,
+            b'*' => Token::new(TokenType::Asterisk, "*".into()),
+            b'/' => Token::new(TokenType::Slash, "/".into()),
+            b'<' => Token::new(TokenType::LessThan, "<".into()),
+            b'>' => Token::new(TokenType::GreaterThan, ">".into()),
+            0 => Token::new(TokenType::Eof, "".into()),
+            _ => Token::new(TokenType::Illegal, "".into()),
         };
 
         self.read_char();
@@ -151,87 +151,52 @@ mod test {
 
         let mut lexer = super::Lexer::new(input);
 
-        let tests = [
-            super::Token::Let,
-            super::Token::Ident("five".into()),
-            super::Token::Assign,
-            super::Token::Int(String::from("5")),
-            super::Token::Semicolon,
-            super::Token::Let,
-            super::Token::Ident(String::from("ten")),
-            super::Token::Assign,
-            super::Token::Int(String::from("10")),
-            super::Token::Semicolon,
-            super::Token::Let,
-            super::Token::Ident(String::from("add")),
-            super::Token::Assign,
-            super::Token::Function,
-            super::Token::LParen,
-            super::Token::Ident(String::from("x")),
-            super::Token::Comma,
-            super::Token::Ident("y".into()),
-            super::Token::RParen,
-            super::Token::LBrace,
-            super::Token::Ident(String::from("x")),
-            super::Token::Plus,
-            super::Token::Ident(String::from("y")),
-            super::Token::Semicolon,
-            super::Token::RBrace,
-            super::Token::Semicolon,
-            super::Token::Let,
-            super::Token::Ident(String::from("result")),
-            super::Token::Assign,
-            super::Token::Ident(String::from("add")),
-            super::Token::LParen,
-            super::Token::Ident(String::from("five")),
-            super::Token::Comma,
-            super::Token::Ident(String::from("ten")),
-            super::Token::RParen,
-            super::Token::Semicolon,
-            super::Token::Bang,
-            super::Token::Minus,
-            super::Token::Slash,
-            super::Token::Asterisk,
-            super::Token::Int(String::from("5")),
-            super::Token::Semicolon,
-            super::Token::Int(String::from("5")),
-            super::Token::LessThan,
-            super::Token::Int(String::from("10")),
-            super::Token::GreaterThan,
-            super::Token::Int(String::from("5")),
-            super::Token::Semicolon,
-            super::Token::If,
-            super::Token::LParen,
-            super::Token::Int(String::from("5")),
-            super::Token::LessThan,
-            super::Token::Int(String::from("10")),
-            super::Token::RParen,
-            super::Token::LBrace,
-            super::Token::Return,
-            super::Token::True,
-            super::Token::Semicolon,
-            super::Token::RBrace,
-            super::Token::Else,
-            super::Token::LBrace,
-            super::Token::Return,
-            super::Token::False,
-            super::Token::Semicolon,
-            super::Token::RBrace,
-            super::Token::Int("10".into()),
-            super::Token::Equal,
-            super::Token::Int("10".into()),
-            super::Token::Semicolon,
-            super::Token::Int("10".into()),
-            super::Token::BangEqual,
-            super::Token::Int("9".into()),
-            super::Token::Semicolon,
-            super::Token::Eof,
+        let tests = vec![
+            (super::TokenType::Let, "let"),
+            (super::TokenType::Ident, "five"),
+            (super::TokenType::Assign, "="),
+            (super::TokenType::Int, "5"),
+            (super::TokenType::Semicolon, ";"),
+            (super::TokenType::Let, "let"),
+            (super::TokenType::Ident, "ten"),
+            (super::TokenType::Assign, "="),
+            (super::TokenType::Int, "10"),
+            (super::TokenType::Semicolon, ";"),
+            (super::TokenType::Let, "let"),
+            (super::TokenType::Ident, "add"),
+            (super::TokenType::Assign, "="),
+            (super::TokenType::Function, "fn"),
+            (super::TokenType::LParen, "("),
+            (super::TokenType::Ident, "x"),
+            (super::TokenType::Comma, ","),
+            (super::TokenType::Ident, "y"),
+            (super::TokenType::RParen, ")"),
+            (super::TokenType::LBrace, "{"),
+            (super::TokenType::Ident, "x"),
+            (super::TokenType::Plus, "+"),
+            (super::TokenType::Ident, "y"),
+            (super::TokenType::Semicolon, ";"),
+            (super::TokenType::RBrace, "}"),
+            (super::TokenType::Semicolon, ";"),
+            (super::TokenType::Let, "let"),
+            (super::TokenType::Ident, "result"),
+            (super::TokenType::Assign, "="),
+            (super::TokenType::Ident, "add"),
+            (super::TokenType::LParen, "("),
+            (super::TokenType::Ident, "five"),
+            (super::TokenType::Comma, ","),
+            (super::TokenType::Ident, "ten"),
+            (super::TokenType::RParen, ")"),
         ];
 
         for (_, expected) in tests.iter().enumerate() {
             let tok = lexer.next_token();
             println!("expected: {:?}, got: {:?}", expected, tok);
-            if tok != *expected {
+            if tok.token_type != expected.0 {
+                return Err(());
+            }
+
+            if tok.literal != expected.1 {
                 return Err(());
             }
         }

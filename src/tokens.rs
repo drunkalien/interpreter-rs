@@ -1,9 +1,24 @@
-#[derive(Debug, PartialEq)]
-pub enum Token {
+#[derive(Debug, PartialEq, Clone)]
+pub struct Token {
+    pub token_type: TokenType,
+    pub literal: String,
+}
+
+impl Token {
+    pub fn new(token_type: TokenType, literal: String) -> Token {
+        Token {
+            token_type,
+            literal,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TokenType {
     Illegal,
     Eof,
-    Ident(String),
-    Int(String),
+    Ident,
+    Int,
     Assign,
     Plus,
     Comma,
