@@ -8,6 +8,7 @@ const PROMPT: &str = ">> ";
 pub struct Repl;
 
 impl Repl {
+    pub fn new() {}
     pub fn start() {
         loop {
             print!("{}", PROMPT);
