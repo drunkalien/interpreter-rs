@@ -42,4 +42,5 @@ pub enum TokenType {
     GreaterThan,
     If,
     Else,
+    String,
 }

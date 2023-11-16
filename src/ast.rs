@@ -1,25 +1,7 @@
-use crate::tokens::{Token, TokenType};
-use downcast_rs::{impl_downcast, Downcast};
-
-pub trait Node {
-    fn token_literal(&self) -> String;
-    fn string(&self) -> String;
-}
-
-pub trait Statement: Node + Downcast {
-    fn statement_node(&self);
-}
-
-impl_downcast!(Statement);
-
-pub trait Expression: Node + Downcast {
-    fn expression_node(&self);
-}
-
-impl_downcast!(Expression);
+use crate::tokens::Token;
 
 pub struct Program {
-    pub statements: Vec<Box<dyn Statement>>,
+    pub statements: Vec<Statement>,
 }
 
 impl Node for Program {
@@ -42,36 +24,64 @@ impl Node for Program {
     }
 }
 
-pub struct LetStatement {
-    pub token: Token,
-    pub name: Identifier,
-    pub value: Option<Box<dyn Expression>>,
+pub trait Node {
+    fn token_literal(&self) -> String;
+    fn string(&self) -> String;
 }
 
-impl Node for LetStatement {
+pub enum Expression {
+    Identifier(Identifier),
+    IntegerLiteral(IntegerLiteral),
+    PrefixExpression(PrefixExpression),
+}
+
+impl Node for Expression {
     fn token_literal(&self) -> String {
-        self.token.literal.clone()
+        match self {
+            Expression::Identifier(identifier) => identifier.token_literal(),
+            Expression::IntegerLiteral(integer_literal) => integer_literal.token_literal(),
+            Expression::PrefixExpression(prefix_expression) => prefix_expression.token_literal(),
+        }
     }
 
     fn string(&self) -> String {
-        let mut out = String::new();
-
-        out.push_str(&self.token_literal());
-        out.push_str(" ");
-        out.push_str(&self.name.string());
-        out.push_str(" = ");
-
-        if let Some(value) = self.value.as_ref() {
-            out.push_str(&value.string());
+        match self {
+            Expression::Identifier(identifier) => identifier.string(),
+            Expression::IntegerLiteral(integer_literal) => integer_literal.string(),
+            Expression::PrefixExpression(prefix_expression) => prefix_expression.string(),
         }
-
-        out.push_str(";");
-
-        out
     }
 }
 
-impl Statement for LetStatement {
+impl Expression {
+    fn expression_node(&self) {}
+}
+
+pub enum Statement {
+    Let(LetStatement),
+    Return(ReturnStatement),
+    Expression(ExpressionStatement),
+}
+
+impl Node for Statement {
+    fn token_literal(&self) -> String {
+        match self {
+            Statement::Let(let_statement) => let_statement.token_literal(),
+            Statement::Return(return_statement) => return_statement.token_literal(),
+            Statement::Expression(expression_statement) => expression_statement.token_literal(),
+        }
+    }
+
+    fn string(&self) -> String {
+        match self {
+            Statement::Let(let_statement) => let_statement.string(),
+            Statement::Return(return_statement) => return_statement.string(),
+            Statement::Expression(expression_statement) => expression_statement.string(),
+        }
+    }
+}
+
+impl Statement {
     fn statement_node(&self) {}
 }
 
@@ -90,13 +100,50 @@ impl Node for Identifier {
     }
 }
 
-impl Expression for Identifier {
-    fn expression_node(&self) {}
+impl Expression {
+    fn identifier_expression(identifier: Identifier) -> Expression {
+        Expression::Identifier(identifier)
+    }
+}
+
+impl Statement {
+    fn let_statement(let_statement: LetStatement) -> Statement {
+        Statement::Let(let_statement)
+    }
+}
+
+pub struct LetStatement {
+    pub token: Token,
+    pub name: Identifier,
+    pub value: Option<Expression>,
+}
+
+impl Node for LetStatement {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+
+    fn string(&self) -> String {
+        let mut out = String::new();
+
+        out.push_str(&self.token_literal());
+        out.push_str(" ");
+        out.push_str(&self.name.string());
+        out.push_str(" = ");
+
+        if let Some(value) = &self.value {
+            out.push_str(&value.string());
+        }
+
+        out.push_str(";");
+
+        out
+    }
 }
 
 pub struct ReturnStatement {
     pub token: Token,
-    pub return_value: Option<Box<dyn Expression>>,
+    pub return_value: Option<Expression>,
 }
 
 impl Node for ReturnStatement {
@@ -110,7 +157,7 @@ impl Node for ReturnStatement {
         out.push_str(&self.token_literal());
         out.push_str(" ");
 
-        if let Some(return_value) = self.return_value.as_ref() {
+        if let Some(return_value) = &self.return_value {
             out.push_str(&return_value.string());
         }
 
@@ -120,13 +167,9 @@ impl Node for ReturnStatement {
     }
 }
 
-impl Statement for ReturnStatement {
-    fn statement_node(&self) {}
-}
-
 pub struct ExpressionStatement {
     pub token: Token,
-    pub expression: Option<Box<dyn Expression>>,
+    pub expression: Option<Expression>,
 }
 
 impl Node for ExpressionStatement {
@@ -135,7 +178,7 @@ impl Node for ExpressionStatement {
     }
 
     fn string(&self) -> String {
-        if let Some(expr) = self.expression.as_ref() {
+        if let Some(expr) = &self.expression {
             expr.string()
         } else {
             String::new()
@@ -143,27 +186,40 @@ impl Node for ExpressionStatement {
     }
 }
 
-impl Statement for ExpressionStatement {
-    fn statement_node(&self) {}
-}
-
-struct IntegerLiteral {
-    token: Token,
-    value: i64,
+pub struct IntegerLiteral {
+    pub token: Token,
+    pub value: i64,
 }
 
 impl Node for IntegerLiteral {
-    fn string(&self) -> String {
+    fn token_literal(&self) -> String {
         self.token.literal.clone()
     }
 
+    fn string(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+pub struct PrefixExpression {
+    pub token: Token,
+    pub operator: String,
+    pub right: Box<Expression>,
+}
+
+impl Node for PrefixExpression {
     fn token_literal(&self) -> String {
         self.token.literal.clone()
+    }
+
+    fn string(&self) -> String {
+        format!("({}{})", self.operator, self.right.string())
     }
 }
 
 #[cfg(test)]
 mod test {
+    use super::Identifier;
     use crate::ast::Node;
     use crate::tokens::Token;
 
@@ -187,7 +243,7 @@ mod test {
                 },
                 value: "my_var".into(),
             },
-            value: Some(Box::new(super::Identifier {
+            value: Some(super::Expression::Identifier(Identifier {
                 token: Token {
                     token_type: crate::tokens::TokenType::Ident,
                     literal: "another_var".into(),
@@ -196,7 +252,9 @@ mod test {
             })),
         };
 
-        program.statements.push(Box::new(let_statement));
+        program
+            .statements
+            .push(super::Statement::Let(let_statement));
 
         let test = "let my_var = another_var;";
 

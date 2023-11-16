@@ -43,6 +43,7 @@ impl Lexer {
                     Token::new(TokenType::Assign, "=".into())
                 }
             }
+            b'"' => self.read_string(),
             b';' => Token::new(TokenType::Semicolon, ";".into()),
             b'(' => Token::new(TokenType::LParen, "(".into()),
             b')' => Token::new(TokenType::RParen, ")".into()),
@@ -78,7 +79,12 @@ impl Lexer {
                 }
             }
             b'*' => Token::new(TokenType::Asterisk, "*".into()),
-            b'/' => Token::new(TokenType::Slash, "/".into()),
+            b'/' => {
+                if self.peek_char() == b'/' {
+                    return self.comment();
+                }
+                Token::new(TokenType::Slash, "/".into())
+            }
             b'<' => Token::new(TokenType::LessThan, "<".into()),
             b'>' => Token::new(TokenType::GreaterThan, ">".into()),
             0 => Token::new(TokenType::Eof, "".into()),
@@ -87,6 +93,33 @@ impl Lexer {
 
         self.read_char();
         token
+    }
+
+    fn comment(&mut self) -> Token {
+        while self.ch != b'\n' && self.ch != 0 {
+            self.read_char()
+        }
+
+        self.next_token()
+    }
+
+    fn read_string(&mut self) -> Token {
+        self.read_char();
+        let mut literal = String::new();
+
+        while self.ch != b'"' && self.ch != 0 {
+            if self.ch == b'\\' {
+                self.read_char();
+            }
+            literal.push(self.ch as char);
+            self.read_char()
+        }
+
+        if self.ch == 0 {
+            panic!("String didn't close");
+        }
+
+        Token::new(TokenType::String, literal)
     }
 
     fn read_identifier(&mut self) -> String {

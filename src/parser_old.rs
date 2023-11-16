@@ -1,13 +1,13 @@
-use crate::ast::{
-    Expression, ExpressionStatement, Identifier, IntegerLiteral, LetStatement, Program,
+use crate::ast_old::{
+    Expression, ExpressionStatement, Identifier, IntegerLiteral, LetStatement, Node, Program,
     ReturnStatement, Statement,
 };
 use crate::lexer::Lexer;
 use crate::tokens::{Token, TokenType};
 use std::collections::HashMap;
 
-type PrefixParseFn = fn(&mut Parser) -> Option<Expression>;
-type InfixParseFn = fn(Expression) -> Expression;
+type prefixParseFn = fn(&mut Parser) -> Option<Box<dyn Expression>>;
+type infixParseFn = fn(dyn Expression) -> Box<dyn Expression>;
 
 // Precedence constants
 const LOWEST: u8 = 1;
@@ -24,8 +24,8 @@ pub struct Parser {
     pub peek_token: Token,
     pub errors: Vec<String>,
 
-    pub prefix_parse_fns: HashMap<TokenType, PrefixParseFn>,
-    pub infix_parse_fns: HashMap<TokenType, InfixParseFn>,
+    pub prefixParseFns: HashMap<TokenType, prefixParseFn>,
+    pub infixParseFns: HashMap<TokenType, infixParseFn>,
 }
 
 impl Parser {
@@ -35,8 +35,8 @@ impl Parser {
             cur_token: Token::new(TokenType::Illegal, "".into()),
             peek_token: Token::new(TokenType::Illegal, "".into()),
             errors: Vec::new(),
-            prefix_parse_fns: HashMap::new(),
-            infix_parse_fns: HashMap::new(),
+            prefixParseFns: HashMap::new(),
+            infixParseFns: HashMap::new(),
         };
         parser.next_token();
         parser.next_token();
@@ -45,14 +45,14 @@ impl Parser {
         parser
     }
 
-    fn parse_identifier(&mut self) -> Option<Expression> {
-        Some(Expression::Identifier(Identifier {
+    fn parse_identifier(&mut self) -> Option<Box<dyn Expression>> {
+        Some(Box::new(Identifier {
             token: self.cur_token.clone(),
             value: self.cur_token.literal.clone(),
         }))
     }
 
-    fn parse_integer_literal(&mut self) -> Option<Expression> {
+    fn parse_integer_literal(&mut self) -> Option<Box<dyn Expression>> {
         let is_int_literal = self.cur_token.literal.parse::<i64>();
         let value = match is_int_literal {
             Ok(n) => n,
@@ -63,10 +63,12 @@ impl Parser {
             }
         };
 
-        Some(Expression::IntegerLiteral(IntegerLiteral {
+        let literal = IntegerLiteral {
             token: self.cur_token.clone(),
             value,
-        }))
+        };
+
+        Some(Box::new(literal))
     }
 
     fn no_prefix_parse_fn_error(&mut self, t: TokenType) {
@@ -74,15 +76,15 @@ impl Parser {
         self.errors.push(msg);
     }
 
-    fn parse_expression(&mut self, precedence: u8) -> Option<Expression> {
-        let prefix = match self.prefix_parse_fns.get(&self.cur_token.token_type) {
+    fn parse_expression(&mut self, precedence: u8) -> Option<Box<dyn Expression>> {
+        let prefix = match self.prefixParseFns.get(&self.cur_token.token_type) {
             Some(pref) => pref,
             None => return None,
         };
 
         let result = prefix(self);
 
-        if let Some(_pref) = result {
+        if let Some(pref) = result {
             let token_type = &self.cur_token.token_type;
             self.no_prefix_parse_fn_error(token_type.clone());
             None
@@ -127,7 +129,7 @@ impl Parser {
         program
     }
 
-    pub fn parse_statement(&mut self) -> Option<Statement> {
+    pub fn parse_statement(&mut self) -> Option<Box<dyn Statement>> {
         match self.cur_token.token_type {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
@@ -135,31 +137,31 @@ impl Parser {
         }
     }
 
-    fn parse_expression_statement(&mut self) -> Option<Statement> {
+    fn parse_expression_statement(&mut self) -> Option<Box<dyn Statement>> {
         let expr = self.parse_expression(LOWEST);
-        let stmt = Statement::Expression(ExpressionStatement {
+        let stmt = ExpressionStatement {
             token: self.cur_token.clone(),
             expression: expr,
-        });
+        };
 
         if self.peek_token_is(TokenType::Semicolon) {
             self.next_token();
         }
 
-        Some(stmt)
+        Some(Box::new(stmt))
     }
 
-    pub fn parse_let_statement(&mut self) -> Option<Statement> {
+    pub fn parse_let_statement(&mut self) -> Option<Box<dyn Statement>> {
         let name = Identifier {
             token: self.peek_token.clone(),
             value: self.peek_token.literal.clone(),
         };
 
-        let stmt = Statement::Let(LetStatement {
+        let stmt = LetStatement {
             token: self.cur_token.clone(),
             name,
             value: None,
-        });
+        };
 
         if !self.expect_peek(TokenType::Ident) {
             return None;
@@ -173,24 +175,24 @@ impl Parser {
             self.next_token();
         }
 
-        Some(stmt)
+        Some(Box::new(stmt))
     }
 
-    pub fn parse_return_statement(&mut self) -> Option<Statement> {
-        let stmt = Statement::Return(ReturnStatement {
+    pub fn parse_return_statement(&mut self) -> Option<Box<dyn Statement>> {
+        let stmt = ReturnStatement {
             token: self.cur_token.clone(),
-            return_value: Some(Expression::Identifier(Identifier {
+            return_value: Some(Box::new(Identifier {
                 token: self.peek_token.clone(),
                 value: self.peek_token.literal.clone(),
             })),
-        });
+        };
 
         self.next_token();
         while !self.cur_token_is(TokenType::Semicolon) && !self.cur_token_is(TokenType::Eof) {
             self.next_token();
         }
 
-        Some(stmt)
+        Some(Box::new(stmt))
     }
 
     fn cur_token_is(&mut self, token_type: TokenType) -> bool {
@@ -211,26 +213,24 @@ impl Parser {
         }
     }
 
-    fn register_prefix(&mut self, token_type: TokenType, func: PrefixParseFn) {
-        self.prefix_parse_fns.insert(token_type, func);
+    fn register_prefix(&mut self, token_type: TokenType, func: prefixParseFn) {
+        self.prefixParseFns.insert(token_type, func);
     }
 
-    fn register_infix(&mut self, token_type: TokenType, func: InfixParseFn) {
-        self.infix_parse_fns.insert(token_type, func);
+    fn register_infix(&mut self, token_type: TokenType, func: infixParseFn) {
+        self.infixParseFns.insert(token_type, func);
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::ast::{
-        Expression, ExpressionStatement, Identifier, IntegerLiteral, LetStatement, Node,
-        PrefixExpression, Program, ReturnStatement, Statement,
-    };
+    use crate::ast_old::{ExpressionStatement, IntegerLiteral, PrefixExpression};
 
     use super::*;
 
     #[test]
-    fn test_let_statements() -> Result<(), ()> {
+
+    pub fn test_let_statements() -> Result<(), ()> {
         let input = String::from(
             "let x = 5;
 		let y = 10;
@@ -263,32 +263,32 @@ mod test {
             }
         }
 
-        Ok(())
-    }
-
-    fn test_let_statement(s: &Statement, name: &str) -> bool {
-        if s.token_literal() != "let" {
-            println!("s.token_literal not 'let'. got={}", s.token_literal());
-            return false;
-        }
-
-        let let_stmt = match s {
-            Statement::Let(stmt) => stmt,
-            _ => {
-                println!("s is not LetStatement. got={}", s.token_literal());
+        fn test_let_statement(s: &Box<dyn Statement>, name: &str) -> bool {
+            if s.token_literal() != "let" {
+                println!("s.token_literal not 'let'. got={}", s.token_literal());
                 return false;
             }
-        };
 
-        if let_stmt.name.value != name {
-            println!(
-                "let_stmt.name.value not '{}'. got={}",
-                name, let_stmt.name.value
-            );
-            return false;
+            let let_stmt: &LetStatement = match s.downcast_ref::<LetStatement>() {
+                Some(stmt) => stmt,
+                None => {
+                    println!("s is not LetStatement. got={}", s.token_literal());
+                    return false;
+                }
+            };
+
+            if let_stmt.name.value != name {
+                println!(
+                    "let_stmt.name.value not '{}'. got={}",
+                    name, let_stmt.name.value
+                );
+                return false;
+            }
+
+            true
         }
 
-        true
+        Ok(())
     }
 
     #[test]
@@ -313,22 +313,34 @@ mod test {
             return Err(());
         }
 
-        for stmt in &program.statements {
-            if let Statement::Return(return_stmt) = stmt {
-                if return_stmt.token_literal() != "return" {
-                    println!(
-                        "s.token_literal not 'return'. got={}",
-                        return_stmt.token_literal()
-                    );
-                    return Err(());
-                }
-            } else {
+        for (_, stmt) in program.statements.iter().enumerate() {
+            if stmt.downcast_ref::<ReturnStatement>().is_none() {
                 println!("stmt not ReturnStatement. got={}", stmt.token_literal());
+                return Err(());
+            }
+
+            if stmt.token_literal() != "return" {
+                println!("s.token_literal not 'return'. got={}", stmt.token_literal());
                 return Err(());
             }
         }
 
         Ok(())
+    }
+
+    fn check_parser_errors(p: &mut Parser) -> Result<(), ()> {
+        let errors = p.errors();
+
+        if errors.len() == 0 {
+            return Ok(());
+        }
+
+        println!("parser has {} errors", errors.len());
+
+        for msg in errors {
+            println!("parser error: {}", msg);
+        }
+        Err(())
     }
 
     #[test]
@@ -338,7 +350,7 @@ mod test {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        check_parser_errors(&mut parser)?;
+        let _ = check_parser_errors(&mut parser);
 
         if program.statements.len() != 1 {
             println!(
@@ -348,26 +360,20 @@ mod test {
             return Err(());
         }
 
-        let stmt = match &program.statements[0] {
-            Statement::Expression(expr_stmt) => expr_stmt,
-            _ => {
-                println!("Statement not an ExpressionStatement");
-                return Err(());
-            }
-        };
-
-        let expr = match &stmt.expression {
-            Some(e) => e,
+        let stmt = match program.statements[0].downcast_ref::<ExpressionStatement>() {
+            Some(stmt) => stmt,
             None => {
-                println!("Statement not an ExpressionStatement");
+                println!("Statement not ast expression");
                 return Err(());
             }
         };
 
-        let ident = match expr {
-            Expression::Identifier(ident) => ident,
-            _ => {
-                println!("Expression not an Identifier");
+        let expr = stmt.expression.as_ref().unwrap();
+
+        let ident = match expr.downcast_ref::<Identifier>() {
+            Some(ident) => ident,
+            None => {
+                println!("Statement not ast identifier");
                 return Err(());
             }
         };
@@ -395,7 +401,7 @@ mod test {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        check_parser_errors(&mut parser)?;
+        let _ = check_parser_errors(&mut parser);
 
         if program.statements.len() != 1 {
             println!(
@@ -405,39 +411,36 @@ mod test {
             return Err(());
         }
 
-        let stmt = match &program.statements[0] {
-            Statement::Expression(expr_stmt) => expr_stmt,
-            _ => {
-                println!("Statement is not an ExpressionStatement");
-                return Err(());
-            }
-        };
-
-        let stmt_expr = match &stmt.expression {
-            Some(e) => e,
+        let stmt = match program.statements[0].downcast_ref::<ExpressionStatement>() {
+            Some(stmt) => stmt,
             None => {
-                println!("Statment not expression");
+                println!("Statement is not ast ExpressionStatement");
                 return Err(());
             }
         };
 
-        let expr = match stmt_expr {
-            Expression::IntegerLiteral(literal) => literal,
-            _ => {
+        let expr = stmt.expression.as_ref().unwrap();
+
+        let literal = match expr.downcast_ref::<IntegerLiteral>() {
+            Some(literal) => literal,
+            None => {
                 println!("Something went wrong");
                 return Err(());
             }
         };
 
-        if expr.value != 5 {
-            println!("Expected literal value to be {} but got {}", 5, expr.value);
+        if literal.value != 5 {
+            println!(
+                "Expected literal value to be {} but got {}",
+                5, literal.value
+            );
         }
 
-        if expr.token_literal() != "5".to_owned() {
+        if literal.token_literal() != "5".to_owned() {
             println!(
                 "Expected token literal to be {} but got {}",
                 "5",
-                expr.token_literal()
+                literal.token_literal()
             );
             return Err(());
         }
@@ -449,19 +452,19 @@ mod test {
     fn test_prefix_operators() -> Result<(), ()> {
         struct PrefixTests {
             input: String,
-            operator: String,
+            opeartor: String,
             integer_value: i64,
         }
 
         let prefix_tests = vec![
             PrefixTests {
                 input: String::from("!5;"),
-                operator: String::from("!"),
+                opeartor: String::from("!"),
                 integer_value: 5,
             },
             PrefixTests {
                 input: String::from("-15;"),
-                operator: String::from("-"),
+                opeartor: String::from("-"),
                 integer_value: 15,
             },
         ];
@@ -470,7 +473,7 @@ mod test {
             let lexer = Lexer::new(tt.input.clone());
             let mut parser = Parser::new(lexer);
             let program = parser.parse_program();
-            check_parser_errors(&mut parser)?;
+            let _ = check_parser_errors(&mut parser);
 
             if program.statements.len() != 1 {
                 println!(
@@ -480,44 +483,33 @@ mod test {
                 return Err(());
             }
 
-            let stmt = match &program.statements[0] {
-                Statement::Expression(expr_stmt) => expr_stmt,
-                _ => {
-                    println!("Statement is not an ExpressionStatement");
-                    return Err(());
-                }
-            };
-
-            let stmt_expr = match &stmt.expression {
-                Some(e) => e,
+            let stmt = match program.statements[0].downcast_ref::<ExpressionStatement>() {
+                Some(stmt) => stmt,
                 None => {
-                    println!("Statment not expression");
+                    println!("Statement is not ast ExpressionStatement");
                     return Err(());
                 }
             };
 
-            let expr = match stmt_expr {
-                Expression::PrefixExpression(prefix_expr) => prefix_expr,
-                _ => {
+            let stmt_expr = stmt.expression.as_ref().unwrap();
+
+            let exp = match stmt_expr.downcast_ref::<PrefixExpression>() {
+                Some(literal) => literal,
+                None => {
                     println!("Something went wrong");
                     return Err(());
                 }
             };
 
-            if expr.operator != tt.operator {
+            if exp.operator != tt.opeartor {
                 println!(
                     "Expressions operator is not {}. got {}",
-                    tt.operator, expr.operator
+                    tt.opeartor, exp.operator
                 );
                 return Err(());
             }
 
-            let right = match *expr.right {
-                Expression::IntegerLiteral(ref literal) => literal.clone(),
-                _ => return Err(()),
-            };
-
-            if !test_integer_literal(&right, tt.integer_value) {
+            if !test_integer_literal(&exp.right, tt.integer_value) {
                 return Err(());
             }
         }
@@ -525,36 +517,26 @@ mod test {
         Ok(())
     }
 
-    fn test_integer_literal(il: &IntegerLiteral, value: i64) -> bool {
-        if il.value != value {
-            println!("integer value is not {}. got: {}", value, il.value);
+    fn test_integer_literal(il: &Box<dyn Expression>, value: i64) -> bool {
+        let integ = match il.downcast_ref::<IntegerLiteral>() {
+            Some(v) => v,
+            None => return false,
+        };
+
+        if integ.value != value {
+            println!("integer value is not {}. got: {}", value, integ.value);
             return false;
         }
 
-        if il.token_literal() != format!("{}", value) {
+        if integ.token_literal() != format!("{}", value) {
             println!(
                 "integer token literal is not {}. got: {}",
                 value,
-                il.token_literal()
+                integ.token_literal()
             );
             return false;
         }
 
         true
-    }
-
-    fn check_parser_errors(p: &mut Parser) -> Result<(), ()> {
-        let errors = p.errors();
-
-        if errors.len() == 0 {
-            return Ok(());
-        }
-
-        println!("parser has {} errors", errors.len());
-
-        for msg in errors {
-            println!("parser error: {}", msg);
-        }
-        Err(())
     }
 }
